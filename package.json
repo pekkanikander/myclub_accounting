@@ -1,0 +1,36 @@
+{
+    "name": "KaPa_accounting",
+    "version": "0.0.1",
+    "description": "Accounting for KäPa football club with myclub.fi",
+    "main": "src/accounting.js",
+    "keywords": [],
+    "author": "Pekka Nikander",
+    "license": "ISC",
+    "scripts": {
+	"acc"   : "babel-node src/accounting.js",
+	"test": "mocha --harmony-async-await --require ./test/test_helper.js --compilers js:babel-core/register"
+    },
+    "devDependencies": {
+	"babel-cli": "^6.18.0",
+	"babel-core": "^6.21.0",
+	"babel-preset-env": "^1.2.1",
+	"chai": "^3.5.0",
+	"chai-immutable": "^1.6.0",
+	"mocha": "^3.2.0"
+    },
+    "dependencies": {
+	"babel-runtime": "^6.20.0",
+	"babel-preset-node7": "^1.4.0",
+	"csv": "^1.1.1",
+	"heya-unify": "^0.2.5",
+	"highland": "^2.10.2",
+	"node-fetch": "^1.6.3",
+	"redux": "^3.6.0",
+	"immutable": "^3.8.1"
+    },
+    "babel": {
+	"presets": [
+	    "node7"
+	]
+    }
+}
