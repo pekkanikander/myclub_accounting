@@ -1,19 +1,22 @@
 
-const argv = require('minimist')(process.argv.slice(2));
+import minimist   from 'minimist';
 
+const     argv = minimist(process.argv.slice(2));
 const filename = argv._[0];
 
-const          fs = require('fs');
-const       parse = require('csv-parse');
-const   stringify = require('csv-stringify');
-const           _ = require('highland');
-const   Transform = require('stream').Transform;
-const       unify = require('heya-unify');
-const       iconv = require('iconv-lite');
+import         fs from 'fs';
+import      parse from 'csv-parse';
+import  stringify from 'csv-stringify';
+import     stream from 'stream';
+import      iconv from 'iconv-lite';
+
+import      unify from 'heya-unify';
 
 unify.preprocess  = require('heya-unify/utils/preprocess');
 unify.assemble    = require('heya-unify/utils/assemble');
 unify.matchString = require("heya-unify/unifiers/matchString");
+
+import      fetch from './fetch';
 
 const    valueDate = unify.variable("Päivämäärä"),
       counterParty = unify.variable("Saaja/maksaja"),
@@ -54,7 +57,7 @@ const accountingPatterns = [
 
 /* ---------------------------------------- */
 
-_(
+(
 
     fs.createReadStream(
 	filename
@@ -66,6 +69,17 @@ _(
             columns: true,
             trim: true,
         })
+    )
+
+).map(
+
+    /*
+     * Convert negative value amounts to positive
+     */
+
+    (transaction) => Object.assign(
+	transaction,
+	{ Määrä:  Number.parseFloat(transaction["Määrä EUR"].replace(/,/,"."))).toFixed(2) },
     )
 
  ).map(
