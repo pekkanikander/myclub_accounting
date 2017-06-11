@@ -2,6 +2,8 @@
 import       fetch  from 'node-fetch';
 import  JSONStream  from 'JSONStream';
 
+import      config  from 'config';
+
 import {DataStream} from 'scramjet';
 
 const DefaultFetchHeaders = {
@@ -14,34 +16,34 @@ const DefaultFetchHeaders = {
  *
  * XXX Refactor to be really asynchronous.
  */
-async function fetch_as_JSON_stream(settings, url) {
+async function fetch_as_JSON_stream(url) {
     const fetch_options = {
-        'headers' : Object.assign({}, DefaultFetchHeaders, settings.headers)
+        'headers' : Object.assign({}, DefaultFetchHeaders, config.headers)
     };
 
     try {
-	const res = await fetch(settings.base_url + url, fetch_options);
-	return DataStream.fromArray(await res.json());
+        const res = await fetch(config.base_url + url, fetch_options);
+        return DataStream.fromArray(await res.json());
     } catch (e) {
-	console.log("Fetching failed for " + url + ":" + e);
-	throw (e);
+        console.log("Fetching failed for " + url + ":" + e);
+        throw (e);
     }
 }
 
 /**
  * Returns the JSON from the specified URL as an object
  */
-async function fetch_as_JSON_object(settings, url) {
+async function fetch_as_JSON_object(url) {
     const fetch_options = {
-        'headers' : Object.assign({}, DefaultFetchHeaders, settings.headers)
+        'headers' : Object.assign({}, DefaultFetchHeaders, config.headers)
     };
 
     try {
-	const res = await fetch(settings.base_url + url, fetch_options);
-	return await res.json();
+        const res = await fetch(config.base_url + url, fetch_options);
+        return await res.json();
     } catch (e) {
-	console.log("Fetching failed for " + url + ":" + e);
-	throw (e);
+        console.log("Fetching failed for " + url + ":" + e);
+        throw (e);
     }
 }
 
@@ -49,16 +51,16 @@ async function fetch_as_JSON_object(settings, url) {
  * Returns all the groups in a myclub account
  * @return a Readable DataStream of group objects
  */
-export function groups(settings) {
-    return fetch_as_JSON_stream(settings, 'groups');
+export function groups() {
+    return fetch_as_JSON_stream('groups');
 }
 
 /**
  * Returns all the bank account in a myclub account
  * @return a Readable DataStream of bank objects
  */
-export function accounts(settings) {
-    return fetch_as_JSON_stream(settings, 'bank_accounts');
+export function accounts() {
+    return fetch_as_JSON_stream('bank_accounts');
 }
 
 /**
@@ -67,7 +69,7 @@ export function accounts(settings) {
  *
  * XXX: Refactor into more generic
  */
-async function combined_stream_from_groups(settings, groups, URLfunc) {
+async function combined_stream_from_groups(groups, URLfunc) {
     /*
      * Record the stream created for the last group.
      * This will be drained last, and when ended, we must
@@ -80,22 +82,20 @@ async function combined_stream_from_groups(settings, groups, URLfunc) {
      * all events from all of the group-specific streams.
      */
     const out = await groups.reduce(
-	/* Reducer function, piping to output */
-	async function(out, group) {
-	    /*
-	     * Since all the substreams are piped to the output without
-	     * ending the output, we must still explicitly end it,
-	     * which we do once we encounter the sentinel.
-	     */
-	    console.log("Fetching for group " + group.group.id);
-	    last = await fetch_as_JSON_stream(settings, URLfunc(group));
-	    return last.pipe(out, {end: false});
-	},
-	/* Initial output, an empty DataStream. */
-	new DataStream()
+        /* Reducer function, piping to output */
+        async function(out, group) {
+            /*
+             * Since all the substreams are piped to the output without
+             * ending the output, we must still explicitly end it,
+             * which we do once we encounter the sentinel.
+             */
+            last = await fetch_as_JSON_stream(URLfunc(group));
+            return last.pipe(out, {end: false});
+        },
+        /* Initial output, an empty DataStream. */
+        new DataStream()
     );
-    console.log("Fetched all");
-    last.on('end', () => { console.log("End called"); out.end() });
+    last.on('end', () => { out.end() });
     return out;
 }
 
@@ -103,24 +103,40 @@ async function combined_stream_from_groups(settings, groups, URLfunc) {
  * Returns the stream of myclub events related to a stream of groups
  * @return a Readable DataStream of event objects
  */
-export function events(settings, groups) {
+export function events(groups) {
     return combined_stream_from_groups(
-	settings, groups,
-	group => 'events/?group_id=' + group.group.id + '&start_date=2016-10-01'
+        groups,
+        group => 'events/?group_id=' + group.group.id + '&start_date=2016-10-01'
     );
 }
 
-export function memberships(settings, groups) {
+export function memberships(groups) {
     return combined_stream_from_groups(
-	settings, groups,
-	group => 'groups/' + group.group.id + '/memberships'
+        groups,
+        group => 'groups/' + group.group.id + '/memberships'
     );
 }
 
-export async function members(settings, group) {
+async function members_for_group(group) {
     const memberships
-	  = await fetch_as_JSON_stream(settings, "/groups/" + group.group.id + "/memberships");
-    return memberships.map(member => {
-	return fetch_as_JSON_object(settings, "/members/" + member.member.id)
-    });
+          = await fetch_as_JSON_stream("/groups/" + group.group.id + "/memberships");
+    // Use reduce instead of map in order to serialise the RESTful fetches
+    const out = await memberships.reduce(
+        async function (out, membership) {
+            console.log("Fetching member " + membership.membership.member_id);
+            const member = await fetch_as_JSON_object("/members/" + membership.membership.member_id);
+            out.write(member);
+            return out;
+        },
+        new DataStream()
+    );
+    out.end();
+    return out;
 }
+
+export function members(selector) {
+    if (selector.group !== null) {
+        return members_for_group(selector);
+    }
+}
+
