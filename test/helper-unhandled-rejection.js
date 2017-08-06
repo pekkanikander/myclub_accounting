@@ -15,7 +15,8 @@
 /* eslint-disable no-console */
 
 if (typeof process !== 'undefined') {
-  process.on('unhandledRejection', function(reason) {
+  process.on('unhandledRejection', function(reason, p) {
+    console.log('Unhandled Rejection at:', p, 'reason:', reason);
     throw reason;
   });
 } else if (typeof window !== 'undefined') {
