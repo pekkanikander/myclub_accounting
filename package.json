@@ -11,10 +11,9 @@
   },
   "scripts": {
     "acc": "babel-node src/accounting.js",
-    "test":
-    "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register",
-    "test-strict":
-    "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io"
+    "fetch-members": "NODE_ENV=test babel-node src/fetch.js members",
+    "test": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register",
+    "test-strict": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io"
   },
   "devDependencies": {
     "babel-cli": "^6.18.0",
@@ -35,6 +34,7 @@
     "csv": "^1.1.1",
     "heya-unify": "^0.2.5",
     "immutable": "^3.8.1",
+    "minimist": "^1.2.0",
     "node-fetch": "^1.6.3",
     "redux": "^3.6.0",
     "scramjet": "^2.10.0",

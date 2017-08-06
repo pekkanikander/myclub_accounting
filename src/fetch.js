@@ -22,8 +22,13 @@ async function fetch_as_JSON_stream(url) {
     };
 
     try {
-        const res = await fetch(config.base_url + url, fetch_options);
-        return DataStream.fromArray(await res.json());
+        const res  = await fetch(config.base_url + url, fetch_options);
+	const json = await res.json();
+	if (!(json instanceof Array)) {
+	    const err = "Non-array JSON received: " + JSON.stringify(json);
+	    throw new Error(err);
+	}
+        return DataStream.fromArray(json);
     } catch (e) {
         console.log("Fetching failed for " + url + ":" + e);
         throw (e);
@@ -124,7 +129,8 @@ async function members_for_group(group) {
     const out = await memberships.reduce(
         async function (out, membership) {
             console.log("Fetching member " + membership.membership.member_id);
-            const member = await fetch_as_JSON_object("/members/" + membership.membership.member_id);
+            const member = await fetch_as_JSON_object(
+		"/members/" + membership.membership.member_id);
             out.write(member);
             return out;
         },
@@ -135,8 +141,34 @@ async function members_for_group(group) {
 }
 
 export function members(selector) {
-    if (selector.group !== null) {
-        return members_for_group(selector);
+    if (selector.group) {
+	if (selector.group && selector.group.id) {
+	    return members_for_group(selector);
+	}
+	throw new Error("group.group or group.group.id undefined");
     }
+}
+
+/**
+ * Handle options when used directly from command line
+ */
+if (typeof require !== 'undefined' && require.main === module) {
+
+    process.on('unhandledRejection', function(reason, p) {
+	console.log('Unhandled Rejection at:', p, 'reason:', reason);
+	throw reason;
+    });
+
+    const argv = require('minimist')(process.argv.slice(2));
+    argv._.forEach(async function (keyword) {
+	switch(keyword) {
+
+	case 'members':
+	    const stream = await members({group:{id:1305}} /*XXX*/);
+	    const array  = await stream.toArray();
+	    console.log(JSON.stringify(array, null, 2));
+	    break;
+	}
+    });
 }
 
