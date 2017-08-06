@@ -11,6 +11,8 @@ import test_groups       from './private/test_groups.json';
 import test_accounts     from './private/test_accounts.json';
 import test_events       from './private/test_events.json';
 import test_memberships  from './private/test_memberships.json';
+import test_members      from './private/test_members.json';
+import requester_id      from './private/test_requester_id.json';
 
 import  stringify from 'csv-stringify';
 
@@ -87,7 +89,11 @@ describe('asynchronous fetching', () => {
 	    this.timeout(60000);
             const members = await fetch.members(test_groups[0]);
 	    expect(members).be.a.ReadableStream;
-	    return true; // XXX TBD
+	    members.end();
+	    const members_without_requester = members.filter(
+		member => member.member.id !== requester_id
+	    );
+	    return streamEqual(members_without_requester, streamify(test_members));
 	});
     });
 });
