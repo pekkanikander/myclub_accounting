@@ -10,8 +10,9 @@
     "node": "^8.0.0"
   },
   "scripts": {
-    "acc": "babel-node src/accounting.js",
+    "acc": "NODE_ENV=test babel-node src/accounting.js",
     "fetch-members": "NODE_ENV=test babel-node src/fetch.js members",
+    "transactions-from": "NODE_ENV=test babel-node src/transactions.js from",
     "test": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register",
     "test-strict": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io"
   },
