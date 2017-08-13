@@ -1,14 +1,15 @@
 
 import minimist   from 'minimist';
 
-const     argv = minimist(process.argv.slice(2));
-const filename = argv._[0];
+const     argv  = minimist(process.argv.slice(2));
+const filename  = argv._[0];
 
-import         fs from 'fs';
-import      parse from 'csv-parse';
-import  stringify from 'csv-stringify';
-import     stream from 'stream';
-import      iconv from 'iconv-lite';
+import          fs  from 'fs';
+import       parse  from 'csv-parse';
+import   stringify  from 'csv-stringify';
+import      stream  from 'stream';
+import       iconv  from 'iconv-lite';
+import {DataStream} from 'scramjet';
 
 import      unify from 'heya-unify';
 
@@ -57,20 +58,18 @@ const accountingPatterns = [
 
 /* ---------------------------------------- */
 
-(
-
-    fs.createReadStream(
-	filename
-    ).pipe(
-	iconv.decodeStream('ISO-8859-1')
-    ).pipe(
-        parse({
-            delimiter: ';',
-            columns: true,
-            trim: true,
-        })
-    )
-
+fs.createReadStream(
+    filename
+).pipe(
+    iconv.decodeStream('ISO-8859-1')
+).pipe(
+    parse({
+        delimiter: ';',
+        columns: true,
+        trim: true,
+    })
+).pipe(
+    new DataStream()
 ).map(
 
     /*
@@ -79,7 +78,10 @@ const accountingPatterns = [
 
     (transaction) => Object.assign(
 	transaction,
-	{ Määrä:  Number.parseFloat(transaction["Määrä EUR"].replace(/,/,"."))).toFixed(2) },
+	{
+	    'Määrä':
+	    Number.parseFloat(transaction["Määrä EUR"].replace(/,/,".")).toFixed(2)
+	},
     )
 
  ).map(
@@ -103,6 +105,7 @@ const accountingPatterns = [
         // Construct an accounting transaction using the bindings
         return unify.assemble(aPattern.trans, tEnv);
     }
+
 ).pipe(
 
     stringify({

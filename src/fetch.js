@@ -1,4 +1,9 @@
+/**
+ * Fetch differents kind of data through the myclub.fi API,
+ * returning scramjet streams of objects
+ */
 
+import        http  from 'https';
 import       fetch  from 'node-fetch';
 import  JSONStream  from 'JSONStream';
 
@@ -7,8 +12,15 @@ import      config  from 'config';
 import {DataStream} from 'scramjet';
 
 const DefaultFetchHeaders = {
-    'User-Agent': 'fetch',
     'Content-Type': 'application/json',
+};
+
+const fetch_options = {
+    headers : Object.assign({}, DefaultFetchHeaders, config.headers),
+    agent   : new http.Agent({
+	keepAlive: true,
+	maxSockets: 2,
+    })
 };
 
 /**
@@ -17,20 +29,16 @@ const DefaultFetchHeaders = {
  * XXX Refactor to be really asynchronous.
  */
 async function fetch_as_JSON_stream(url) {
-    const fetch_options = {
-        'headers' : Object.assign({}, DefaultFetchHeaders, config.headers)
-    };
-
     try {
         const res  = await fetch(config.base_url + url, fetch_options);
 	const json = await res.json();
 	if (!(json instanceof Array)) {
-	    const err = "Non-array JSON received: " + JSON.stringify(json);
+	    const err = 'Non-array JSON received: ' + JSON.stringify(json);
 	    throw new Error(err);
 	}
         return DataStream.fromArray(json);
     } catch (e) {
-        console.log("Fetching failed for " + url + ":" + e);
+        console.log('Fetching failed for ' + url + ':' + e);
         throw (e);
     }
 }
@@ -39,15 +47,11 @@ async function fetch_as_JSON_stream(url) {
  * Returns the JSON from the specified URL as an object
  */
 async function fetch_as_JSON_object(url) {
-    const fetch_options = {
-        'headers' : Object.assign({}, DefaultFetchHeaders, config.headers)
-    };
-
     try {
         const res = await fetch(config.base_url + url, fetch_options);
         return await res.json();
     } catch (e) {
-        console.log("Fetching failed for " + url + ":" + e);
+        console.log('Fetching failed for ' + url + ':' + e);
         throw (e);
     }
 }
@@ -124,20 +128,15 @@ export function memberships(groups) {
 
 async function members_for_group(group) {
     const memberships
-          = await fetch_as_JSON_stream("/groups/" + group.group.id + "/memberships");
-    // Use reduce instead of map in order to serialise the RESTful fetches
-    const out = await memberships.reduce(
-        async function (out, membership) {
-            console.log("Fetching member " + membership.membership.member_id);
-            const member = await fetch_as_JSON_object(
-		"/members/" + membership.membership.member_id);
-            out.write(member);
-            return out;
-        },
-        new DataStream()
+          = await fetch_as_JSON_stream('groups/' + group.group.id + '/memberships');
+
+    return memberships.map(
+        async function (membership) {
+            console.log('Fetching member ' + membership.membership.member_id);
+            return fetch_as_JSON_object(
+		'members/' + membership.membership.member_id);
+        }
     );
-    out.end();
-    return out;
 }
 
 export function members(selector) {
@@ -145,8 +144,30 @@ export function members(selector) {
 	if (selector.group && selector.group.id) {
 	    return members_for_group(selector);
 	}
-	throw new Error("group.group or group.group.id undefined");
+	throw new Error('group.group or group.group.id undefined');
     }
+}
+
+/**
+ * Fetches a given invoice
+ * @return A promise for the invoice
+ */
+export function invoice(id) {
+    console.log('Fetching invoice ' + id);
+    return fetch_as_JSON_object('invoices/' + id).then(
+	/* Convert payment dates to objects; we need them for comparisons */
+	function (invoice) {
+	    invoice.invoice.reference = parseInt(invoice.invoice.reference);
+	    invoice.invoice.payments.forEach(
+		(payment) => {
+		    payment.payment_date = new Date(payment.payment_date);
+		    payment.reference    = parseInt(payment.reference);
+		    payment.amount       = parseInt(payment.amount);
+		}
+	    );
+	    return invoice;
+	}
+    );
 }
 
 /**
@@ -164,9 +185,17 @@ if (typeof require !== 'undefined' && require.main === module) {
 	switch(keyword) {
 
 	case 'members':
-	    const stream = await members({group:{id:1305}} /*XXX*/);
+	    const stream = await members(config.group);
 	    const array  = await stream.toArray();
 	    console.log(JSON.stringify(array, null, 2));
+	    break;
+
+	case 'invoice':
+	    const promise = invoice(argv.i);
+	    promise.then(invoice => {
+		console.log(invoice);
+		console.log(invoice.invoice.payments);
+	    });
 	    break;
 	}
     });

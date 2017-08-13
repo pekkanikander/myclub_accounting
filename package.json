@@ -11,8 +11,9 @@
   },
   "scripts": {
     "acc": "NODE_ENV=test babel-node src/accounting.js",
-    "fetch-members": "NODE_ENV=test babel-node src/fetch.js members",
-    "transactions-from": "NODE_ENV=test babel-node src/transactions.js from",
+    "fetch": "NODE_ENV=test babel-node src/fetch.js",
+    "transactions":  "NODE_ENV=test babel-node src/transactions.js",
+    "check":         "NODE_ENV=test babel-node --trace-warnings src/check.js",
     "test": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register",
     "test-strict": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io"
   },
@@ -32,9 +33,11 @@
     "JSONStream": "^1.3.1",
     "babel-preset-node7": "^1.5.0",
     "babel-runtime": "^6.20.0",
+    "config": "^1.26.1",
     "csv": "^1.1.1",
     "heya-unify": "^0.2.5",
     "immutable": "^3.8.1",
+    "lokijs": "^1.5.0",
     "minimist": "^1.2.0",
     "node-fetch": "^1.6.3",
     "redux": "^3.6.0",
