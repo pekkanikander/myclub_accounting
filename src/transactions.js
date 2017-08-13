@@ -1,14 +1,15 @@
 /**
- * Provide a Scramjet stream of banking transactions 
+ * Provide a db collection of banking transactions 
  */
 
 import {DataStream, StringStream} from 'scramjet';
-import  Loki                      from 'lokijs';
 
 import     fs from 'fs';
 import config from 'config';
+import assert from 'assert';
 
-const db = new Loki();
+import Collection from './collection';
+import logger     from './log';
 
 /**
  * Converts a CVS file into a Stream of objects
@@ -59,30 +60,28 @@ function cvsFileToStream(filename, columnMap) {
 /**
  * A Transactions database
  */
-export default class Transactions {
-    constructor(source) {
-	this._collection = db.addCollection('transactions');
-	if (source) {
-	    this.from(source);
-	}
+export default class Transactions extends Collection {
+    /**
+     * Creates a new empty Transactions db collection
+     *
+     * Note that it is not a good idea to fill the db here,
+     * as filling the db is an async operatoin and the
+     * constructor should not (cannot?) return a Promise.
+     */
+    constructor() {
+	super('transactions');
     }
 
     /**
-     * Import transactions from an object stream.
-     * @source  A stream of objects
+     * Import transactions from a file or an object stream.
+     * @source  A stream of objects or a file name
      * @returns A Promise that completes when all data has been imported
      */
     async from(source) {
 	if (typeof source === 'string') {
 	    source = cvsFileToStream(source, config.field_conversion);
 	}
-
-	return source.reduce(
-		(coll, doc) => {
-		    coll._collection.insert(doc)
-		    return coll;
-		}, this
-	);
+	return super.from(source);
     }
 
     /**
@@ -111,7 +110,7 @@ export default class Transactions {
 if (typeof require !== 'undefined' && require.main === module) {
 
     process.on('unhandledRejection', function(reason, p) {
-	console.log('Unhandled Rejection at:', p, 'reason:', reason);
+	logger.error('Unhandled Rejection at:', p, 'reason:', reason);
 	throw reason;
     });
 
