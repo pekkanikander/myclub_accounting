@@ -36,37 +36,36 @@ function streamEqual(s1, s2) {
 
 describe('asynchronous fetching', () => {
     describe('function groups', () => {
-        it('returns the right groups as a stream', async function () {
+        it('returns the right groups as a stream', function () {
 	    this.timeout(5000);
-            const groups = await fetch.groups();
+            const groups = fetch.groups();
             expect(groups).be.a.ReadableStream;
-	    return streamEqual(groups, streamify(test_groups));
+	    return streamEqual(streamify(test_groups), groups);
 	});
     });
 
     describe('function accounts', () => {
-        it('returns the right accounts', async function () {
+        it('returns the right accounts', function () {
 	    this.timeout(5000);
-            const accounts = await fetch.accounts();
+            const accounts = fetch.accounts();
             expect(accounts).be.a.ReadableStream;
-	    return streamEqual(accounts, streamify(test_accounts));
+	    return streamEqual(streamify(test_accounts), accounts);
         });
     });
 
     describe('function events', () => {
-        it('returns the right events for all groups', async function () {
+        it('returns the right events for all groups', function () {
 	    this.timeout(5000);
-            const events = await fetch.events(streamify(test_groups));
+            const events = fetch.events(streamify(test_groups));
             expect(events).be.a.ReadableStream;
-	    events.end();
-	    return streamEqual(events, streamify(test_events));
+	    return streamEqual(streamify(test_events), events);
         });
     });
 
     describe('function memberships', () => {
         it('returns the right members', async function () {
 	    this.timeout(5000);
-            const memberships = await fetch.memberships(streamify(test_groups));
+            const memberships = fetch.memberships(streamify(test_groups));
 	    expect(memberships).be.a.ReadableStream;
 
 	    // the following does not work due to async ordering
@@ -85,15 +84,14 @@ describe('asynchronous fetching', () => {
     });
 
     describe('function members', () => {
-        it('returns the right members for a single group', async function () {
+        it('returns the right members for a single group', function () {
 	    this.timeout(60000);
-            const members = await fetch.members(test_groups[0]);
+            const members = fetch.members(test_groups[0]);
 	    expect(members).be.a.ReadableStream;
-	    members.end();
 	    const members_without_requester = members.filter(
 		member => member.member.id !== requester_id
 	    );
-	    return streamEqual(members_without_requester, streamify(test_members));
+	    return streamEqual(streamify(test_members), members_without_requester);
 	});
     });
 });

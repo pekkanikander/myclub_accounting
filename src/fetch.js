@@ -11,6 +11,8 @@ import      config  from 'config';
 
 import {DataStream} from 'scramjet';
 
+import logger       from './log';
+
 const DefaultFetchHeaders = {
     'Content-Type': 'application/json',
 };
@@ -25,35 +27,51 @@ const fetch_options = {
 
 /**
  * Returns the JSON from the specified URL as a DataStream
- *
- * XXX Refactor to be really asynchronous.
  */
-async function fetch_as_JSON_stream(url) {
+function fetch_as_JSON_stream(url) {
+    const ds = new DataStream();
     try {
-        const res  = await fetch(config.base_url + url, fetch_options);
-	const json = await res.json();
-	if (!(json instanceof Array)) {
-	    const err = 'Non-array JSON received: ' + JSON.stringify(json);
-	    throw new Error(err);
-	}
-        return DataStream.fromArray(json);
+	logger.debug("Fetching " + config.base_url + url);
+        fetch(config.base_url + url, fetch_options)
+	    .then((res)  => res.json())
+	    .then((json) => {
+		if (!(json instanceof Array)) {
+		    const err = 'Non-array JSON received: ' + JSON.stringify(json);
+		    throw new Error(err);
+		}
+		// See data-stream.js fromArray()
+		const arr = json.slice(); // Shallow copy
+		process.nextTick(() => {
+		    arr.forEach((item) => ds.write(item));
+		    ds.end();
+		});
+	    })
+	;
     } catch (e) {
-        console.log('Fetching failed for ' + url + ':' + e);
+        logger.error('Fetching failed for ' + url + ':' + e);
         throw (e);
     }
+    return ds;
 }
 
 /**
- * Returns the JSON from the specified URL as an object
+ * Returns the JSON from the specified URL as a DataStream of one item
  */
-async function fetch_as_JSON_object(url) {
+function fetch_as_JSON_singleton_stream(url) {
+    const ds = new DataStream();
     try {
-        const res = await fetch(config.base_url + url, fetch_options);
-        return await res.json();
+	logger.debug("Fetching " + config.base_url + url);
+        fetch(config.base_url + url, fetch_options)
+	    .then((res)  => {
+		return res.json();
+	    })
+	    .then((json) => ds.end(json))
+	;
     } catch (e) {
-        console.log('Fetching failed for ' + url + ':' + e);
+        logger.error('Fetching failed for ' + url + ':' + e);
         throw (e);
     }
+    return ds;
 }
 
 /**
@@ -78,7 +96,7 @@ export function accounts() {
  *
  * XXX: Refactor into more generic
  */
-async function combined_stream_from_groups(groups, URLfunc) {
+function combined_stream_from_groups(groups, URLfunc) {
     /*
      * Record the stream created for the last group.
      * This will be drained last, and when ended, we must
@@ -90,21 +108,23 @@ async function combined_stream_from_groups(groups, URLfunc) {
      * Reduce the stream of groups into a single stream that receives
      * all events from all of the group-specific streams.
      */
-    const out = await groups.reduce(
+    const out = new DataStream();
+    groups.reduce(
         /* Reducer function, piping to output */
-        async function(out, group) {
+        function(out, group) {
             /*
              * Since all the substreams are piped to the output without
              * ending the output, we must still explicitly end it,
              * which we do once we encounter the sentinel.
              */
-            last = await fetch_as_JSON_stream(URLfunc(group));
+            last = fetch_as_JSON_stream(URLfunc(group));
             return last.pipe(out, {end: false});
         },
         /* Initial output, an empty DataStream. */
-        new DataStream()
+	out
+    ).then(
+	(out) => last.on('end', () => { out.end() })
     );
-    last.on('end', () => { out.end() });
     return out;
 }
 
@@ -126,17 +146,17 @@ export function memberships(groups) {
     );
 }
 
-async function members_for_group(group) {
-    const memberships
-          = await fetch_as_JSON_stream('groups/' + group.group.id + '/memberships');
+export function member(id) {
+    return fetch_as_JSON_singleton_stream('members/' + id);
+}
 
-    return memberships.map(
-        async function (membership) {
-            console.log('Fetching member ' + membership.membership.member_id);
-            return fetch_as_JSON_object(
-		'members/' + membership.membership.member_id);
-        }
-    );
+function members_for_group(group) {
+    return fetch_as_JSON_stream('groups/' + group.group.id + '/memberships')
+	.map((membership) => {
+	    logger.info('Fetching member ' + membership.membership.member_id);
+	    return member(membership.membership.member_id).reduce((res, member) => member);
+        })
+    ;
 }
 
 export function members(selector) {
@@ -146,6 +166,7 @@ export function members(selector) {
 	}
 	throw new Error('group.group or group.group.id undefined');
     }
+    throw new Error('unknown selector type');
 }
 
 /**
@@ -153,11 +174,13 @@ export function members(selector) {
  * @return A promise for the invoice
  */
 export function invoice(id) {
-    console.log('Fetching invoice ' + id);
-    return fetch_as_JSON_object('invoices/' + id).then(
+    logger.info('Fetching invoice ' + id);
+    return fetch_as_JSON_singleton_stream('invoices/' + id).map(
 	/* Convert payment dates to objects; we need them for comparisons */
 	function (invoice) {
+	    // Convert invoice refences to integers
 	    invoice.invoice.reference = parseInt(invoice.invoice.reference);
+	    // Convert payment fields to saner ones
 	    invoice.invoice.payments.forEach(
 		(payment) => {
 		    payment.payment_date = new Date(payment.payment_date);
@@ -176,23 +199,27 @@ export function invoice(id) {
 if (typeof require !== 'undefined' && require.main === module) {
 
     process.on('unhandledRejection', function(reason, p) {
-	console.log('Unhandled Rejection at:', p, 'reason:', reason);
+	logger.error('Unhandled Rejection at:', p, 'reason:', reason);
 	throw reason;
     });
 
     const argv = require('minimist')(process.argv.slice(2));
-    argv._.forEach(async function (keyword) {
+    argv._.forEach(function (keyword) {
 	switch(keyword) {
 
 	case 'members':
-	    const stream = await members(config.group);
-	    const array  = await stream.toArray();
-	    console.log(JSON.stringify(array, null, 2));
+	    members(config.group)
+		.stringify((member) => (JSON.stringify(member, null, 2)))
+		.pipe(process.stdout);
+	    break;
+
+	case 'member':
+	    member(argv.i).each(console.log);
+
 	    break;
 
 	case 'invoice':
-	    const promise = invoice(argv.i);
-	    promise.then(invoice => {
+	    invoice(argv.i).each((invoice) => {
 		console.log(invoice);
 		console.log(invoice.invoice.payments);
 	    });
