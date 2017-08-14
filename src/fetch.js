@@ -31,7 +31,7 @@ const fetch_options = {
 function fetch_as_JSON_stream(url) {
     const ds = new DataStream();
     try {
-	logger.debug("Fetching " + config.base_url + url);
+	logger.debug("Fetch: " + config.base_url + url);
         fetch(config.base_url + url, fetch_options)
 	    .then((res)  => res.json())
 	    .then((json) => {
@@ -48,7 +48,7 @@ function fetch_as_JSON_stream(url) {
 	    })
 	;
     } catch (e) {
-        logger.error('Fetching failed for ' + url + ':' + e);
+        logger.error('Fetch: ' + config.base_ur + url + ': failed:' + e);
         throw (e);
     }
     return ds;
@@ -60,7 +60,7 @@ function fetch_as_JSON_stream(url) {
 function fetch_as_JSON_singleton_stream(url) {
     const ds = new DataStream();
     try {
-	logger.debug("Fetching " + config.base_url + url);
+	logger.debug("Fetch: " + config.base_url + url);
         fetch(config.base_url + url, fetch_options)
 	    .then((res)  => {
 		return res.json();
@@ -68,7 +68,7 @@ function fetch_as_JSON_singleton_stream(url) {
 	    .then((json) => ds.end(json))
 	;
     } catch (e) {
-        logger.error('Fetching failed for ' + url + ':' + e);
+        logger.error('Fetch: ' + config.base_ur + url + ': failed:' + e);
         throw (e);
     }
     return ds;
@@ -79,6 +79,7 @@ function fetch_as_JSON_singleton_stream(url) {
  * @return a Readable DataStream of group objects
  */
 export function groups() {
+    logger.info('Fetch: groups');
     return fetch_as_JSON_stream('groups');
 }
 
@@ -87,6 +88,7 @@ export function groups() {
  * @return a Readable DataStream of bank objects
  */
 export function accounts() {
+    logger.info('Fetch: accounts for group ' + group.group.id);
     return fetch_as_JSON_stream('bank_accounts');
 }
 
@@ -123,7 +125,7 @@ function combined_stream_from_groups(groups, URLfunc) {
         /* Initial output, an empty DataStream. */
 	out
     ).then(
-	(out) => last.on('end', () => { out.end() })
+	(out) => last.on('end', () => { out.end() }) // XXX Simplify?
     );
     return out;
 }
@@ -133,6 +135,7 @@ function combined_stream_from_groups(groups, URLfunc) {
  * @return a Readable DataStream of event objects
  */
 export function events(groups) {
+    logger.info('Fetch: events for group ' + group.group.id);
     return combined_stream_from_groups(
         groups,
         group => 'events/?group_id=' + group.group.id + '&start_date=2016-10-01'
@@ -140,6 +143,7 @@ export function events(groups) {
 }
 
 export function memberships(groups) {
+    logger.info('Fetch: memberships for group ' + group.group.id);
     return combined_stream_from_groups(
         groups,
         group => 'groups/' + group.group.id + '/memberships'
@@ -147,13 +151,15 @@ export function memberships(groups) {
 }
 
 export function member(id) {
+    logger.info('Fetch: member ' + id);
     return fetch_as_JSON_singleton_stream('members/' + id);
 }
 
 function members_for_group(group) {
+    logger.info('Fetch: members for group ' + group.group.id);
     return fetch_as_JSON_stream('groups/' + group.group.id + '/memberships')
 	.map((membership) => {
-	    logger.info('Fetching member ' + membership.membership.member_id);
+	    logger.info('Fetch: member ' + membership.membership.member_id);
 	    return member(membership.membership.member_id).reduce((res, member) => member);
         })
     ;
@@ -174,7 +180,7 @@ export function members(selector) {
  * @return A promise for the invoice
  */
 export function invoice(id) {
-    logger.info('Fetching invoice ' + id);
+    logger.info('Fetch: invoice ' + id);
     return fetch_as_JSON_singleton_stream('invoices/' + id).map(
 	/* Convert payment dates to objects; we need them for comparisons */
 	function (invoice) {
@@ -199,7 +205,7 @@ export function invoice(id) {
 if (typeof require !== 'undefined' && require.main === module) {
 
     process.on('unhandledRejection', function(reason, p) {
-	logger.error('Unhandled Rejection at:', p, 'reason:', reason);
+	logger.error('Fetch: Unhandled Rejection at:', p, 'reason:', reason);
 	throw reason;
     });
 
@@ -214,8 +220,9 @@ if (typeof require !== 'undefined' && require.main === module) {
 	    break;
 
 	case 'member':
-	    member(argv.i).each(console.log);
-
+	    member(argv.i)
+		.stringify((member) => (JSON.stringify(member, null, 2)))
+		.pipe(process.stdout);
 	    break;
 
 	case 'invoice':

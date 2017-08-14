@@ -13,7 +13,7 @@
     "acc": "NODE_ENV=test babel-node src/accounting.js",
     "fetch": "NODE_ENV=test babel-node src/fetch.js",
     "transactions": "NODE_ENV=test babel-node src/transactions.js",
-    "check": "NODE_ENV=test babel-node --trace-warnings src/check.js",
+    "check": "NODE_ENV=test babel-node --inspect --inspect-brk --trace-warnings src/check.js",
     "test": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register",
     "test-strict": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io"
   },

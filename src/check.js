@@ -8,6 +8,7 @@ import {DataStream} from 'scramjet';
 
 import * as fetch   from './fetch';
 import Transactions from './transactions';
+import Invoices     from './invoices';
 import logger       from './log';
 
 /**
@@ -21,11 +22,14 @@ function member_to_payment_report(member) {
 
 /**
  * Checks the total balance of a given member's invoces
+ *
+ * Writes the augmented invoice objects to the invoice output stream.
  * @param member       A member object
  * @param transactions A Scramjet Stream of bank transactions
+ * @param invoices     A Writable Stream of fetched invoices
  * @returns 
  */
-function associate_payments_transactions(member, transactions) {
+function associate_payments_transactions(member, transactions, invoices) {
     // Max four days of difference
     const DATE_EPSILON = Math.abs(new Date(1970, 0, 5, 0).valueOf());
 
@@ -34,19 +38,19 @@ function associate_payments_transactions(member, transactions) {
      */
     function tp_match(reference, transaction, payment) {
 	if (transaction.reference == payment.reference) {
-	    logger.info("Matched with ref: " + reference);
+	    logger.info('Check: Matched with ref: ' + reference);
 	    return 1;
 	}
 
 	if (transaction.amount != payment.amount) {
-	    logger.info("Different amounts: " +
-			transaction.amount + " ≠ " + payment.amount);
+	    logger.info('Check: Different amounts: ' +
+			transaction.amount + ' ≠ ' + payment.amount);
 	    return 0;
 	}
 	const tdate = transaction.date.valueOf();
 	const pdate = payment.payment_date.valueOf();
 	if (Math.abs(tdate - pdate) <= DATE_EPSILON) {
-	    logger.info("Matched with date: " + reference);
+	    logger.info('Check: Matched with date: ' + reference);
 	    return 1;
 	}
 	return 0;
@@ -59,7 +63,7 @@ function associate_payments_transactions(member, transactions) {
 	const reference = invoice.invoice.reference;
 	const transactions = T.findByReference(reference);
 	if (transactions.length == 0) {
-	    logger.info("No bank transactions found for " + reference);
+	    logger.info('Check: No bank transactions found for ' + reference);
 	    return 0;
 	}
 
@@ -67,7 +71,7 @@ function associate_payments_transactions(member, transactions) {
 	const payments = invoice.invoice.payments
 	      .filter((payment) => (payment.amount > 0 && payment.amount < 10000));
 	if (payments.length == 0) {
-	    logger.info("No payments found for " + reference);
+	    logger.info('Check: No payments found for ' + reference);
 	    return 0;
 	}
 
@@ -85,7 +89,7 @@ function associate_payments_transactions(member, transactions) {
 		payment.transaction = transaction;
 		return 1;
 	    }
-	    logger.info("Could not match transaction and payment: ");
+	    logger.info('Check: Could not match transaction and payment');
 	    logger.debug(transaction);
 	    logger.debug(payment);
 	    return 0;
@@ -103,14 +107,14 @@ function associate_payments_transactions(member, transactions) {
 			  (transaction) => tp_match(reference, transaction, payment)
 		      );
 		if (matching_transactions.length == 0) {
-		    logger.info("Could not find any matching transactions");
+		    logger.info('Check: Could not find any matching transactions');
 		    logger.debug(transactions);
 		    logger.debug(payment);
 		} else if (matching_transactions.length == 1) {
-		    logger.info("Matched with exclusion");
+		    logger.info('Check: Matched with exclusion');
 		    payment.transaction = matching_transactions[0];
 		} else {
-		    logger.info("Found multiple matching transactions");
+		    logger.info('Check: Found multiple matching transactions');
 		    logger.debug(matching_transactions);
 		    logger.debug(payment);
 		    payment.transactions = matching_transactions;
@@ -170,7 +174,7 @@ function associate_payments_transactions(member, transactions) {
 	return XXX;
     }
 
-    logger.debug("Checking member " + member.member.id);
+    logger.debug('Check: Checking member ' + member.member.id);
 
     assert(member.member.invoices);
 
@@ -190,6 +194,9 @@ function associate_payments_transactions(member, transactions) {
 
         // Augment the invoice payments with transactions
 	.each((inv) => transactions2payments(transactions, inv))
+
+        // Feed to the invoices DB
+	.pipe(invoices);
     ;
 
     return member;
@@ -202,9 +209,17 @@ function associate_payments_transactions(member, transactions) {
  * @return A Scramejet Stream of members who have paid too much or too little
  */
 function check_members_payments(members, transactions) {
+
+    const invoices = new Invoices();
+
+    invoices.setMaxListeners(100); // XXX Why we need this much?
+
+    /*
+     * Associates transactions with member payments and
+     * pipes the related invoices to Invoices DB
+     */
     members
-	.map(member => associate_payments_transactions(member, transactions))
-	// .stringify(member_to_payment_report)
+	.each(member => associate_payments_transactions(member, transactions, invoices));
     ;
 }
 
@@ -214,7 +229,7 @@ function check_members_payments(members, transactions) {
 if (typeof require !== 'undefined' && require.main === module) {
 
     process.on('unhandledRejection', function(reason, p) {
-	logger.error('Unhandled Rejection at:', p, 'reason:', reason);
+	logger.error('Check: Unhandled Rejection at:', p, 'reason:', reason);
 	throw reason;
     });
 
