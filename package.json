@@ -15,7 +15,8 @@
     "transactions": "NODE_ENV=test babel-node src/transactions.js",
     "check": "NODE_ENV=test babel-node --inspect --inspect-brk --trace-warnings src/check.js",
     "test": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register",
-    "test-strict": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io"
+    "test-strict": "NODE_ENV=test mocha --require ./test/test_helper.js --compilers js:babel-core/register --trace-sync-io",
+    "lint": "eslint src/*.js"
   },
   "devDependencies": {
     "babel-cli": "^6.18.0",
@@ -25,6 +26,12 @@
     "chai-as-promised": "^6.0.0",
     "chai-immutable": "^1.6.0",
     "chai-stream": "0.0.0",
+    "eslint": "^4.4.1",
+    "eslint-config-standard": "^10.2.1",
+    "eslint-plugin-import": "^2.7.0",
+    "eslint-plugin-node": "^5.1.1",
+    "eslint-plugin-promise": "^3.5.0",
+    "eslint-plugin-standard": "^3.0.1",
     "mocha": "^3.2.0",
     "stream-array": "^1.1.2",
     "stream-equal": "^1.0.0"
