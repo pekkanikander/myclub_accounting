@@ -2,11 +2,13 @@
  * Provide a db collection of banking transactions 
  */
 
+'use strict';
+
 import {DataStream, StringStream} from 'scramjet';
 
-import     fs from 'fs';
-import config from 'config';
 import assert from 'assert';
+import config from 'config';
+import     fs from 'fs';
 
 import Collection from './collection';
 import logger     from './log';
@@ -82,15 +84,6 @@ export default class Transactions extends Collection {
 	    source = cvsFileToStream(source, config.field_conversion);
 	}
 	return super.from(source);
-    }
-
-    /**
-     * Find transactions by the reference
-     * @returns An array of transaction objects
-     */
-    findByReference(reference) {
-	const r = this._collection.find({'reference':reference});
-	return r;
     }
 
     /**

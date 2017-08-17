@@ -2,6 +2,8 @@
  * Provide a database collection
  */
 
+'use strict';
+
 import assert from 'assert';
 import stream from 'stream';
 
@@ -19,8 +21,41 @@ export default class Collection extends stream.Writable {
 	this._collection = db.addCollection(name);
     }
 
+    /**
+     * Find elements by the reference
+     * @returns An array of transaction objects
+     */
+    findByReference(reference) {
+	const r = this._collection.find({'reference':reference});
+	return r;
+    }
+
+    /**
+     * Find elements by their ID
+     * @returns An array of transaction objects
+     */
+    findById(id) {
+	logger.info('Finding with id ' + id);
+	const r = this._collection.find({'id':id});
+	return r;
+    }
+
+    /**
+     * Allow XXX
+     */
     end(chunk, encoding, cb) {
 	logger.debug("Collection: Ignoring stream end");
+	super.end(chunk, encoding, () => {
+	    // Unend after the callback has been called.
+	    if (cb) {
+		cb();
+	    }
+	    const state = this._writableState;
+	    state.ending = false;
+	    state.finished = false;
+	    state.ended = false;
+	    state.writable = true;
+	});
     }
 
     /**

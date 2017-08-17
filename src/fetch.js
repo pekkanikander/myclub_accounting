@@ -3,6 +3,8 @@
  * returning scramjet streams of objects
  */
 
+'use strict';
+
 import        http  from 'https';
 import       fetch  from 'node-fetch';
 import  JSONStream  from 'JSONStream';
@@ -88,7 +90,7 @@ export function groups() {
  * @return a Readable DataStream of bank objects
  */
 export function accounts() {
-    logger.info('Fetch: accounts for group ' + group.group.id);
+    logger.info('Fetch: accounts');
     return fetch_as_JSON_stream('bank_accounts');
 }
 
@@ -135,7 +137,7 @@ function combined_stream_from_groups(groups, URLfunc) {
  * @return a Readable DataStream of event objects
  */
 export function events(groups) {
-    logger.info('Fetch: events for group ' + group.group.id);
+    logger.info('Fetch: events for several groups');
     return combined_stream_from_groups(
         groups,
         group => 'events/?group_id=' + group.group.id + '&start_date=2016-10-01'
@@ -143,7 +145,7 @@ export function events(groups) {
 }
 
 export function memberships(groups) {
-    logger.info('Fetch: memberships for group ' + group.group.id);
+    logger.info('Fetch: memberships several groups');
     return combined_stream_from_groups(
         groups,
         group => 'groups/' + group.group.id + '/memberships'
@@ -159,7 +161,6 @@ function members_for_group(group) {
     logger.info('Fetch: members for group ' + group.group.id);
     return fetch_as_JSON_stream('groups/' + group.group.id + '/memberships')
 	.map((membership) => {
-	    logger.info('Fetch: member ' + membership.membership.member_id);
 	    return member(membership.membership.member_id).reduce((res, member) => member);
         })
     ;
@@ -184,6 +185,8 @@ export function invoice(id) {
     return fetch_as_JSON_singleton_stream('invoices/' + id).map(
 	/* Convert payment dates to objects; we need them for comparisons */
 	function (invoice) {
+	    // Add ID to the invoice
+	    invoice.invoice.id = id;
 	    // Convert invoice refences to integers
 	    invoice.invoice.reference = parseInt(invoice.invoice.reference);
 	    // Convert payment fields to saner ones

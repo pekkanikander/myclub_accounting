@@ -2,6 +2,8 @@
  * Provide a db collection of invoices
  */
 
+'use strict';
+
 import {DataStream, StringStream} from 'scramjet';
 
 import config from 'config';
@@ -24,6 +26,4 @@ export default class Invoices extends Collection {
     constructor(options) {
 	super('invoices', options);
     }
-
-    
 }

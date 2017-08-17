@@ -2,22 +2,39 @@
  * Performs various kinds of crosschecks on myclub.fi and bank transactions data
  */
 
+'use strict';
+
 import assert       from 'assert';
 import config       from 'config';
+import     fs from 'fs';
+
 import {DataStream} from 'scramjet';
+import render       from 'jsrender';
 
 import * as fetch   from './fetch';
 import Transactions from './transactions';
 import Invoices     from './invoices';
 import logger       from './log';
 
+const template = render.templates(fs.readFileSync('./src/report.txt').toString());
+
 /**
  * Generates a payment report for the given member
  */
-function member_to_payment_report(member) {
-    if (member.member) member = member.member;
+function member_to_payment_report(member, invoices) {
+    member.invoices = [];
+    member.member.invoices.forEach(
+	(invoice) => {
+	    logger.info("Check: Looking up " + invoice.id);
+	    const found_invoices = invoices.findById(invoice.id);
+	    logger.info("Check: Invoice number = " + found_invoices.length);
+	    found_invoices.forEach(
+		(inv) => member.invoices.push(inv)
+	    );
+	}
+    );
 
-    const result = undefined;
+    return template.render(member);
 }
 
 /**
@@ -38,19 +55,19 @@ function associate_payments_transactions(member, transactions, invoices) {
      */
     function tp_match(reference, transaction, payment) {
 	if (transaction.reference == payment.reference) {
-	    logger.info('Check: Matched with ref: ' + reference);
+	    logger.debug('Check: ' + reference + ': Matched with reference');
 	    return 1;
 	}
 
 	if (transaction.amount != payment.amount) {
-	    logger.info('Check: Different amounts: ' +
+	    logger.warn('Check: ' + reference + ': Different amounts: ' +
 			transaction.amount + ' ≠ ' + payment.amount);
 	    return 0;
 	}
 	const tdate = transaction.date.valueOf();
 	const pdate = payment.payment_date.valueOf();
 	if (Math.abs(tdate - pdate) <= DATE_EPSILON) {
-	    logger.info('Check: Matched with date: ' + reference);
+	    logger.info('Check: '  + reference + ': Matched with date');
 	    return 1;
 	}
 	return 0;
@@ -63,7 +80,7 @@ function associate_payments_transactions(member, transactions, invoices) {
 	const reference = invoice.invoice.reference;
 	const transactions = T.findByReference(reference);
 	if (transactions.length == 0) {
-	    logger.info('Check: No bank transactions found for ' + reference);
+	    logger.info('Check: ' + reference + ': No bank transactions found');
 	    return 0;
 	}
 
@@ -71,7 +88,7 @@ function associate_payments_transactions(member, transactions, invoices) {
 	const payments = invoice.invoice.payments
 	      .filter((payment) => (payment.amount > 0 && payment.amount < 10000));
 	if (payments.length == 0) {
-	    logger.info('Check: No payments found for ' + reference);
+	    logger.warn('Check: '  + reference + ': No payments found');
 	    return 0;
 	}
 
@@ -89,7 +106,7 @@ function associate_payments_transactions(member, transactions, invoices) {
 		payment.transaction = transaction;
 		return 1;
 	    }
-	    logger.info('Check: Could not match transaction and payment');
+	    logger.warn('Check: ' + reference + ': Could not match transaction and payment');
 	    logger.debug(transaction);
 	    logger.debug(payment);
 	    return 0;
@@ -107,14 +124,14 @@ function associate_payments_transactions(member, transactions, invoices) {
 			  (transaction) => tp_match(reference, transaction, payment)
 		      );
 		if (matching_transactions.length == 0) {
-		    logger.info('Check: Could not find any matching transactions');
+		    logger.warn('Check: ' + reference + ': Could not find any matching transactions');
 		    logger.debug(transactions);
 		    logger.debug(payment);
 		} else if (matching_transactions.length == 1) {
-		    logger.info('Check: Matched with exclusion');
+		    logger.info('Check: ' + reference + ': Matched with exclusion');
 		    payment.transaction = matching_transactions[0];
 		} else {
-		    logger.info('Check: Found multiple matching transactions');
+		    logger.warn('Check: ' + reference + ': Found multiple matching transactions');
 		    logger.debug(matching_transactions);
 		    logger.debug(payment);
 		    payment.transactions = matching_transactions;
@@ -179,27 +196,34 @@ function associate_payments_transactions(member, transactions, invoices) {
     assert(member.member.invoices);
 
     // Iterate over the invoices array of this member
-    DataStream.fromArray(member.member.invoices)
+    return new Promise((res, rej) => {
+	DataStream.fromArray(member.member.invoices)
 
-        // Convert member invoice objects to promises of
-        // the actual invoices,  adding the due amount and status
-	.map(
-	    (i) => fetch.invoice(i.id)
-		.reduce((out, inv) => (
-		    inv.due_amount = i.due_amount,
-		    inv.status     = i.status,
-		    inv
-		), undefined)
-	)
+            // Convert member invoice objects to promises of
+            // the actual invoices,  adding the due amount and status
+	    .map(
+		(i) => fetch.invoice(i.id)
+		    .reduce((out, inv) => (
+			inv.due_amount = i.due_amount,
+			inv.status     = i.status,
+			inv
+		    ), undefined)
+	    )
 
-        // Augment the invoice payments with transactions
-	.each((inv) => transactions2payments(transactions, inv))
+            // Augment the invoice payments with transactions
+	    .each((inv) => transactions2payments(transactions, inv))
 
-        // Feed to the invoices DB
-	.pipe(invoices);
-    ;
+            // Feed to the invoices DB
+	    .pipe(invoices)
 
-    return member;
+	    // When everything is ready,
+	    // resolve the promise, returning the member to the pipe
+	    .on('finish', () => {
+		logger.debug("Check: Finished member " + member.member.id);
+		res(member);
+	    });
+
+    });
 }
 
 /**
@@ -219,7 +243,9 @@ function check_members_payments(members, transactions) {
      * pipes the related invoices to Invoices DB
      */
     members
-	.each(member => associate_payments_transactions(member, transactions, invoices));
+	.map(       member => (associate_payments_transactions(member, transactions, invoices), member))
+	.stringify( member => member_to_payment_report(member, invoices))
+	.map(console.log)
     ;
 }
 
@@ -233,18 +259,22 @@ if (typeof require !== 'undefined' && require.main === module) {
 	throw reason;
     });
 
-    const argv = require('minimist')(process.argv.slice(2));
-    argv._.forEach(async function (keyword) {
-	switch(keyword) {
-
-	case 'payments':
-	    const members      = fetch.members(config.group);
-	    const transactions = new Transactions()
-	    transactions.from(argv.f).then(() => {
-		check_members_payments(members, transactions)
-		;
-	    });
-	    break;
-	}
-    });
+    try {
+	const argv = require('minimist')(process.argv.slice(2));
+	argv._.forEach(async function (keyword) {
+	    switch(keyword) {
+		
+	    case 'payments':
+		const members      = fetch.members(config.group);
+		const transactions = new Transactions()
+		transactions.from(argv.f).then(() => {
+		    check_members_payments(members, transactions)
+		    ;
+		});
+		break;
+	    }
+	});
+    } catch (e) {
+	console.log(e);
+    }
 }

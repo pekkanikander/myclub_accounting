@@ -1,3 +1,4 @@
+'use strict';
 
 import config  from 'config';
 import log4js  from 'log4js';
