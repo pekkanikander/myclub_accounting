@@ -1,0 +1,11 @@
+KäPa 06 AC 10/2016 – 9/2017 maksuraportti
+
+Pelaaja: {{:first_name}} {{:last_name}}
+{{if invoices}}
+  {{for invoices}}
+    {{: due_amount}} {{: status}}
+    {{for invoice}}
+      {{: currency }}    
+    {{/for}}
+  {{/for}}
+{{/if}}

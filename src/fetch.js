@@ -7,7 +7,6 @@
 
 import        http  from 'https';
 import       fetch  from 'node-fetch';
-import  JSONStream  from 'JSONStream';
 
 import      config  from 'config';
 
@@ -22,8 +21,8 @@ const DefaultFetchHeaders = {
 const fetch_options = {
     headers : Object.assign({}, DefaultFetchHeaders, config.headers),
     agent   : new http.Agent({
-	keepAlive: true,
-	maxSockets: 2,
+        keepAlive: true,
+        maxSockets: 2,
     })
 };
 
@@ -33,22 +32,22 @@ const fetch_options = {
 function fetch_as_JSON_stream(url) {
     const ds = new DataStream();
     try {
-	logger.debug("Fetch: " + config.base_url + url);
+        logger.debug('Fetch: ' + config.base_url + url);
         fetch(config.base_url + url, fetch_options)
-	    .then((res)  => res.json())
-	    .then((json) => {
-		if (!(json instanceof Array)) {
-		    const err = 'Non-array JSON received: ' + JSON.stringify(json);
-		    throw new Error(err);
-		}
-		// See data-stream.js fromArray()
-		const arr = json.slice(); // Shallow copy
-		process.nextTick(() => {
-		    arr.forEach((item) => ds.write(item));
-		    ds.end();
-		});
-	    })
-	;
+            .then((res)  => res.json())
+            .then((json) => {
+                if (!(json instanceof Array)) {
+                    const err = 'Non-array JSON received: ' + JSON.stringify(json);
+                    throw new Error(err);
+                }
+                // See data-stream.js fromArray()
+                const arr = json.slice(); // Shallow copy
+                process.nextTick(() => {
+                    arr.forEach((item) => ds.write(item));
+                    ds.end();
+                });
+            })
+        ;
     } catch (e) {
         logger.error('Fetch: ' + config.base_ur + url + ': failed:' + e);
         throw (e);
@@ -62,13 +61,13 @@ function fetch_as_JSON_stream(url) {
 function fetch_as_JSON_singleton_stream(url) {
     const ds = new DataStream();
     try {
-	logger.debug("Fetch: " + config.base_url + url);
+        logger.debug('Fetch: ' + config.base_url + url);
         fetch(config.base_url + url, fetch_options)
-	    .then((res)  => {
-		return res.json();
-	    })
-	    .then((json) => ds.end(json))
-	;
+            .then((res)  => {
+                return res.json();
+            })
+            .then((json) => ds.end(json))
+        ;
     } catch (e) {
         logger.error('Fetch: ' + config.base_ur + url + ': failed:' + e);
         throw (e);
@@ -125,9 +124,9 @@ function combined_stream_from_groups(groups, URLfunc) {
             return last.pipe(out, {end: false});
         },
         /* Initial output, an empty DataStream. */
-	out
+        out
     ).then(
-	(out) => last.on('end', () => { out.end() }) // XXX Simplify?
+        (out) => last.on('end', () => { out.end(); }) // XXX Simplify?
     );
     return out;
 }
@@ -160,18 +159,18 @@ export function member(id) {
 function members_for_group(group) {
     logger.info('Fetch: members for group ' + group.group.id);
     return fetch_as_JSON_stream('groups/' + group.group.id + '/memberships')
-	.map((membership) => {
-	    return member(membership.membership.member_id).reduce((res, member) => member);
+        .map((membership) => {
+            return member(membership.membership.member_id).reduce((res, member) => member);
         })
     ;
 }
 
 export function members(selector) {
     if (selector.group) {
-	if (selector.group && selector.group.id) {
-	    return members_for_group(selector);
-	}
-	throw new Error('group.group or group.group.id undefined');
+        if (selector.group && selector.group.id) {
+            return members_for_group(selector);
+        }
+        throw new Error('group.group or group.group.id undefined');
     }
     throw new Error('unknown selector type');
 }
@@ -183,22 +182,22 @@ export function members(selector) {
 export function invoice(id) {
     logger.info('Fetch: invoice ' + id);
     return fetch_as_JSON_singleton_stream('invoices/' + id).map(
-	/* Convert payment dates to objects; we need them for comparisons */
-	function (invoice) {
-	    // Add ID to the invoice
-	    invoice.invoice.id = id;
-	    // Convert invoice refences to integers
-	    invoice.invoice.reference = parseInt(invoice.invoice.reference);
-	    // Convert payment fields to saner ones
-	    invoice.invoice.payments.forEach(
-		(payment) => {
-		    payment.payment_date = new Date(payment.payment_date);
-		    payment.reference    = parseInt(payment.reference);
-		    payment.amount       = parseInt(payment.amount);
-		}
-	    );
-	    return invoice;
-	}
+        /* Convert payment dates to objects; we need them for comparisons */
+        function (invoice) {
+            // Add ID to the invoice
+            invoice.invoice.id = id;
+            // Convert invoice refences to integers
+            invoice.invoice.reference = parseInt(invoice.invoice.reference);
+            // Convert payment fields to saner ones
+            invoice.invoice.payments.forEach(
+                (payment) => {
+                    payment.payment_date = new Date(payment.payment_date);
+                    payment.reference    = parseInt(payment.reference);
+                    payment.amount       = parseInt(payment.amount);
+                }
+            );
+            return invoice;
+        }
     );
 }
 
@@ -208,33 +207,32 @@ export function invoice(id) {
 if (typeof require !== 'undefined' && require.main === module) {
 
     process.on('unhandledRejection', function(reason, p) {
-	logger.error('Fetch: Unhandled Rejection at:', p, 'reason:', reason);
-	throw reason;
+        logger.error('Fetch: Unhandled Rejection at:', p, 'reason:', reason);
+        throw reason;
     });
 
     const argv = require('minimist')(process.argv.slice(2));
     argv._.forEach(function (keyword) {
-	switch(keyword) {
+        switch(keyword) {
 
-	case 'members':
-	    members(config.group)
-		.stringify((member) => (JSON.stringify(member, null, 2)))
-		.pipe(process.stdout);
-	    break;
+        case 'members':
+            members(config.group)
+                .stringify((member) => (JSON.stringify(member, null, 2)))
+                .pipe(process.stdout);
+            break;
 
-	case 'member':
-	    member(argv.i)
-		.stringify((member) => (JSON.stringify(member, null, 2)))
-		.pipe(process.stdout);
-	    break;
+        case 'member':
+            member(argv.i)
+                .stringify((member) => (JSON.stringify(member, null, 2)))
+                .pipe(process.stdout);
+            break;
 
-	case 'invoice':
-	    invoice(argv.i).each((invoice) => {
-		console.log(invoice);
-		console.log(invoice.invoice.payments);
-	    });
-	    break;
-	}
+        case 'invoice':
+            invoice(argv.i).each((invoice) => {
+                logger.info('Invoice: ' + JSON.stringify(invoice));
+            });
+            break;
+        }
     });
 }
 

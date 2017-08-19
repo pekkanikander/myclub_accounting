@@ -4,11 +4,6 @@
 
 'use strict';
 
-import {DataStream, StringStream} from 'scramjet';
-
-import config from 'config';
-import assert from 'assert';
-
 import Collection from './collection';
 import logger     from './log';
 
@@ -24,6 +19,29 @@ export default class Invoices extends Collection {
      * constructor should not (cannot?) return a Promise.
      */
     constructor(options) {
-	super('invoices', options);
+        super('invoices', options);
     }
+
+    /**
+     * Allow XXX
+     */
+    end(chunk, encoding, cb) {
+        logger.debug('Collection: Ignoring stream end');
+        super.end(chunk, encoding, () => {
+            // Unend after the callback has been called.
+            if (cb) {
+                cb();
+            }
+            const state = this._writableState;
+            state.ending = false;
+            state.finished = false;
+            state.ended = false;
+            state.writable = true;
+        });
+    }
+
+    _write(chunk, encoding, callback) {
+        logger.info('Storing invoice: ' + JSON.stringify(chunk));
+        super._write(chunk, encoding, callback);
+    }    
 }

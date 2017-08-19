@@ -7,7 +7,6 @@ const filename  = argv._[0];
 import          fs  from 'fs';
 import       parse  from 'csv-parse';
 import   stringify  from 'csv-stringify';
-import      stream  from 'stream';
 import       iconv  from 'iconv-lite';
 import {DataStream} from 'scramjet';
 
@@ -15,37 +14,35 @@ import      unify from 'heya-unify';
 
 unify.preprocess  = require('heya-unify/utils/preprocess');
 unify.assemble    = require('heya-unify/utils/assemble');
-unify.matchString = require("heya-unify/unifiers/matchString");
+unify.matchString = require('heya-unify/unifiers/matchString');
 
-import      fetch from './fetch';
-
-const    valueDate = unify.variable("Päivämäärä"),
-      counterParty = unify.variable("Saaja/maksaja"),
-       description = unify.variable("Selite"),
-         reference = unify.variable("Viite/Viesti"),
-       valueAmount = unify.variable("Määrä EUR"),
-      debetAccount = unify.variable("DebetTili"),
-     creditAccount = unify.variable("KreditTili");
+const    valueDate = unify.variable('Päivämäärä'),
+      counterParty = unify.variable('Saaja/maksaja'),
+       description = unify.variable('Selite'),
+         reference = unify.variable('Viite/Viesti'),
+       valueAmount = unify.variable('Määrä EUR'),
+      debetAccount = unify.variable('DebetTili'),
+     creditAccount = unify.variable('KreditTili');
 
 const transactionPattern = unify.open({
-       ["Päivämäärä"]: valueDate,
-        ["Määrä EUR"]: valueAmount,
-    ["Saaja/maksaja"]: counterParty,
-           ["Selite"]: description,
-     ["Viite/Viesti"]: reference
+       ['Päivämäärä']: valueDate,
+        ['Määrä EUR']: valueAmount,
+    ['Saaja/maksaja']: counterParty,
+           ['Selite']: description,
+     ['Viite/Viesti']: reference
 });
 
 const AccountingTransaction = {
             Päivä: valueDate,
            Selite: description,
-["Saaja/maksaja"]: counterParty,
+['Saaja/maksaja']: counterParty,
             Summa: valueAmount,
 };
 
 const accountingPatterns = [
     {
         match: {
-            ["Saaja/Maksaja"]: "FUMAX OY KÄPYLÄN JALKAPALLOHALLI",
+            ['Saaja/Maksaja']: 'FUMAX OY KÄPYLÄN JALKAPALLOHALLI',
         },
         trans: { Debet: 103, Kredit: 101 }
     },
@@ -80,11 +77,11 @@ fs.createReadStream(
 	transaction,
 	{
 	    'Määrä':
-	    Number.parseFloat(transaction["Määrä EUR"].replace(/,/,".")).toFixed(2)
-	},
+	    Number.parseFloat(transaction['Määrä EUR'].replace(/,/,'.')).toFixed(2)
+	}
     )
 
- ).map(
+).map(
 
     /*
      * Convert bank transactions into accounting transactions
@@ -97,7 +94,7 @@ fs.createReadStream(
         );
         if (aPattern == null) {
             console.log(transaction);
-            throw new Error("Define new pattern for transaction " + transaction);
+            throw new Error('Define new pattern for transaction ' + transaction);
         }
 
         // Match the bank transaction against the pattern, binding variables
@@ -110,7 +107,7 @@ fs.createReadStream(
 
     stringify({
 	header: true,
-	delimiter: ";",
+	delimiter: ';',
 	
     })
 
