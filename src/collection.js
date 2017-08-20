@@ -35,8 +35,8 @@ export default class Collection extends stream.Duplex {
      * @returns An array of transaction objects
      */
     findById(id) {
-        logger.info('Finding with id ' + id);
         const r = this._collection.find({'id':id});
+        logger.trace('Finding with id ' + id + ': returning: ' + JSON.stringify(r));
         return r;
     }
 
@@ -44,11 +44,20 @@ export default class Collection extends stream.Duplex {
      * Implements the mandatory Writable stream _write method
      */
     _write(chunk, encoding, callback) {
-        if (this._collection.insertOne(chunk)) {
-            callback();
-        } else {
-            callback(new Error('Could not insert to db: ' + chunk));
+        logger.debug('Collection: Storing: ' + chunk.id);
+        try {
+            if (this._collection.insertOne(chunk)) {
+                callback();
+            } else {
+                const error = new Error('Could not insert to db: ' + chunk);
+                logger.error('Collection: error: ' + error);
+                callback(error);
+            }
+        } catch (error) {
+            logger.error('Collection: error: ' + error);
+            callback(error);
         }
+        logger.debug('Collection: Storing: ' + chunk.id + '. Done.');
     }
 
     /**

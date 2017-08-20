@@ -22,8 +22,13 @@ export default class Members extends Collection {
         super('invoices', options);
     }
 
+    end(chunk, encoding, cb) {
+        logger.info('Members: stream end');
+        super.end(chunk, encoding, cb);
+    }
+
     _write(chunk, encoding, callback) {
-        logger.info('Storing member: ' + chunk.id);
+        logger.debug('Members: Storing: ' + chunk.id);
         super._write(chunk, encoding, callback);
     }    
 }

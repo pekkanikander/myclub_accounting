@@ -17,17 +17,41 @@ import Invoices     from './invoices';
 import Members      from './members';
 import logger       from './log';
 
+const StartDate = new Date(config.start_date).valueOf();
+
+const DateOptions = { year: 'numeric', month: '2-digit', day: '2-digit' };
+render.views.converters(
+    'd', (date) => ("        " + (new Date(date)).toLocaleString('fi-FI', DateOptions)).slice(-10));
+render.views.converters(
+    'f', (val) =>  ("        " + parseFloat(val).toFixed(2)).slice(-8));
+
+render.views.settings.allowCode(true);
+render.views.converters(
+    'status',
+    function(val) {
+	switch (val) {
+	case 'paid':     return 'maksettu';
+	case 'overpaid': return 'liikaa  ';
+	case 'overdue':  return 'myöhässä';
+	}
+	return val;
+    }
+);
+
 const template = render.templates(fs.readFileSync('./src/report.txt').toString());
+
+
+
 
 /**
  * Generates a payment report for the given member
  */
 function member_to_payment_report(member) {
-    member.invoices = [];
-
     try {
-        if (member.invoices[0])
-            console.log(member.invoices[0].invoice);
+	if (member.invoices && member.invoices[0] && member.invoices[0].invoice) {
+	    const i = member.invoices[0].invoice;
+	    // console.log(i);
+	}
         return template.render(member);
     } catch (error) {
         logger.error('Check: Render error: ' + error);
@@ -141,8 +165,12 @@ function associate_payments_transactions(member, transactions, invoices) {
     }
 
     function transactions2payments4map(transactions, invoice) {
-        const r = transactions2payments(transactions, invoice);
-        return new Promise((res, rej) => res(invoice));
+        try {
+            const r = transactions2payments(transactions, invoice);
+        } catch (error) {
+            logger.error('Check: Error: ' + error);
+        }
+        return Promise.resolve(invoice);
     }
 
     /**
@@ -154,7 +182,7 @@ function associate_payments_transactions(member, transactions, invoices) {
      *   - amounts must match
      * or 
      * 2b) payment must be written by the bank matching
-     */
+     * /
     function isSimplyPaid(invoice) {
         if (invoice.payments.length != 1) return false;
 
@@ -177,7 +205,7 @@ function associate_payments_transactions(member, transactions, invoices) {
     /**
      * Check that all payments have exactly one transaction
      * @returns falsy on all ok, non-zero on something needing investigation
-     */
+     * /
     function verifyAllPayments(invoice) {
         // If there are no good payments
         if (!invoice.payments || invoice.payments.length == 0) {
@@ -193,15 +221,16 @@ function associate_payments_transactions(member, transactions, invoices) {
 
         return XXX;
     }
+*/
 
     logger.debug('Check: member '  + member.id + ': Checking');
 
     assert(member.invoices);
 
     // Iterate over the invoices array of this member
-    return new Promise((res, rej) => {
+    return new Promise((resolve, reject) => {
         try {
-            const s = DataStream.fromArray(member.invoices)
+            DataStream.fromArray(member.invoices)
 
             // Convert member invoice objects to promises of
             // the actual invoices,  adding the due amount and status
@@ -215,20 +244,36 @@ function associate_payments_transactions(member, transactions, invoices) {
                 )
 
             // Augment the invoice payments with transactions
-                  .map((inv) => transactions2payments4map(transactions, inv))
-            ;
+                .map((inv) => transactions2payments4map(transactions, inv))
+
             
             // When everything is ready,
             // resolve the promise, returning the member to the pipe
-            s.on('end', () => {
-                logger.info('Check: member '  + member.id + ': Finished');
-                res(member);
-            });
+                .on('end', () => {
+                    logger.debug('Check: member '  + member.id + ': Finished');
+                    try {
+                        resolve(member);
+                    } catch (error) {
+                        logger.error('Check: error: ' + error);
+                        reject(error);
+                    }
+                })
+
+                .on('error', (error) => {
+                    logger.error('Check: error: ' + error);
+                    reject(error);
+                })
 
             // Feed to the invoices DB
-            s.pipe(invoices);
-        } catch (err) {
-            rej(err);
+                .pipe(invoices, { end: false })
+                .on('error', (error) => {
+                    logger.error('Check: error: ' + error);
+                    reject(error);
+                });
+            
+        } catch (error) {
+            logger.error('Check: error: ' + error);
+            reject(error);
         }
     });
 }
@@ -246,32 +291,123 @@ function check_members_payments(members, transactions) {
 
     invoicesTable.setMaxListeners(100); // XXX Why we need this much?
 
+    /**
+     * Iterate over member's invoices
+     */
+    function memberMapInvoices(member, func) {
+        return Object.assign({}, member, { invoices: member.invoices.map(func) });
+    }
+
+    function memberFilterInvoices(member, func) {
+	return Object.assign({}, member, { invoices: member.invoices.filter(func) });
+    }
+
+    function invoiceCheck(invoice) {
+	if (!invoice.invoices) {
+	    logger.error('Check: invoice: no real invoice found: ' + invoice.id);
+	    return;
+	}
+	if (invoice.invoices.length != 1) {
+	    logger.error('Check: invoice: more than one real invoices: ' + invoice.id);
+	    return;
+	}
+
+	// Replace the table with its only object
+	const newInvoice = Object.assign({}, invoice);
+	newInvoice.invoice = invoice.invoices[0];
+	newInvoice.invoices = undefined;
+	
+	// Create a pseudo-transaction for confirmed payment objects
+	newInvoice.invoice.payments.forEach(
+	    (payment) => {
+		payment.transaction = payment.transaction ||
+		    {
+			date:      payment.payment_date,
+			payee:     payment.payer,
+			type:      payment.comment,
+			reference: payment.reference,
+			amount:    payment.amount,
+		    }
+	    }
+	);
+
+	return newInvoice;
+    }
+
+    function memberCollectTransactions(member) {
+	const newMember = Object.assign(
+	    {}, member,
+	    {
+		transactions: member.invoices.reduce(
+		    (transactions, invoice) => transactions.concat(
+			(invoice.invoice? invoice.invoice.payments: []).reduce(
+			    (transactions, payment) => transactions.concat(
+				payment.transaction? [payment.transaction]: []
+			    ), []
+			)
+		    ), []
+		)
+	    });
+	// XXX Add non-assigned transactions
+	return newMember;
+    }
+
+    function memberComputeTotals(member) {
+	return Object.assign(
+	    {}, member,
+	    {
+		invoiced_total:
+		member.invoices.reduce(    (sum, invoi) => (sum + parseFloat(invoi.due_amount)), 0),
+		paid_total:
+		member.transactions.reduce((sum, trans) => (sum + trans.amount), 0),
+	    }
+	);
+    }
+
     /*
      * Associates transactions with member payments and
      * pipes the related invoices to InvoicesTable DB
      */
     members
-        .map(member => member.member)
-        .map(member => (associate_payments_transactions(
-            member, transactions, invoicesTable), member))
+        .map(member => (associate_payments_transactions(member.member, transactions, invoicesTable)))
+        .on('error', (error) => logger.error('Check: error: ' + error))
         .pipe(membersTable)
-        .on('close', () => {
+        .on('finish', () => {
             logger.info('Check: start second phase');
             membersTable
                 ._collection // XXX
                 .chain()
                 .data()
-                .map(
-                    member => {
-                        member.invoices
-                            .forEach(
-                                si => si.invoice = invoicesTable.findById(si.id)
-                            );
-                        return member;
-                    }
-                )
+	    // Take only players and goal keepers
+		.filter(
+		    member => !!(member.memberships.filter(
+			ms => (ms.level == 'Pelaaja' || ms.level == 'Maalivahti')
+		    ))
+		)
+	    // Filter out old invoices
+		.map(
+		    member => memberFilterInvoices(
+			member, inv => new Date(inv.due_date).valueOf() > StartDate
+		    )
+		)
+	    // Combine with invoice objects
+                .map(member => memberMapInvoices(
+		    member, inv => Object.assign(
+                        {}, inv, { invoices : invoicesTable.findById(inv.id) }
+		    )
+		))
+	    // Combine with transaction objects
+		.map(member => memberMapInvoices(member, invoiceCheck))
+	    // Collect transactions to the member level
+		.map(member => memberCollectTransactions(member))
+	    // Calculate sums
+		.map(member => memberComputeTotals(member))
+	    // Create report
                 .map(member_to_payment_report)
                 .map(report => console.log(report));
+        })
+        .on('error', (error) => {
+            logger.error('Check: error: ' + error);
         })
     ;
 }

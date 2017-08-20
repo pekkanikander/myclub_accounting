@@ -1,11 +1,12 @@
 KäPa 06 AC 10/2016 – 9/2017 maksuraportti
 
 Pelaaja: {{:first_name}} {{:last_name}}
-{{if invoices}}
-  {{for invoices}}
-    {{: due_amount}} {{: status}}
-    {{for invoice}}
-      {{: currency }}    
-    {{/for}}
-  {{/for}}
+
+{{if invoices && invoices[0]}}Laskut:
+{{for invoices}}{{if !invoice}}   {{d: due_date}} kohdistamaton lasku
+{{else}}   {{d:due_date}} {{f:invoice.due_amount}} {{status:invoice.status}}{{for invoice.payments}}{{if transaction}}          {{d: transaction.date}} {{f: transaction.amount}}{{else payment_import_id}}          {{d: payment_date}} {{f: amount}}{{else}}Tarkista lasku {{: id}} {{/fi}}
+{{/for}}
+{{for invoice.invoice_lines}}              {{f: net_unit_price}} {{: title}}
+{{/for}}
+{{/if}}{{/for}}   Yhteensä   {{f: invoiced_total}}                              {{f: paid_total}}
 {{/if}}
